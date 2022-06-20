@@ -5,7 +5,7 @@ import pytest
 from airflow import AirflowException
 
 # Import Hook
-from airflow_provider_kafka.hooks.consumer import KafkaConsumerHook
+from airflow_provider_openmldb.hooks.consumer import KafkaConsumerHook
 
 
 # Mock the `conn_sample` Airflow connection

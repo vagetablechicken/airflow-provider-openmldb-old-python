@@ -6,8 +6,8 @@ from airflow import AirflowException
 from airflow.triggers.base import BaseTrigger, TriggerEvent
 from asgiref.sync import sync_to_async
 
-from airflow_provider_kafka.hooks.consumer import KafkaConsumerHook
-from airflow_provider_kafka.shared_utils import get_callable
+from airflow_provider_openmldb.hooks.consumer import KafkaConsumerHook
+from airflow_provider_openmldb.shared_utils import get_callable
 
 
 class AwaitMessageTrigger(BaseTrigger):
@@ -66,7 +66,7 @@ class AwaitMessageTrigger(BaseTrigger):
 
     def serialize(self) -> Tuple[str, Dict[str, Any]]:
         return (
-            "airflow_provider_kafka.triggers.await_message.AwaitMessageTrigger",
+            "airflow_provider_openmldb.triggers.await_message.AwaitMessageTrigger",
             {
                 "topics": self.topics,
                 "apply_function": self.apply_function,

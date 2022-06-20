@@ -6,10 +6,9 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
-
-from airflow_provider_kafka.operators.await_message import AwaitKafkaMessageOperator
-from airflow_provider_kafka.operators.consume_from_topic import ConsumeFromTopicOperator
-from airflow_provider_kafka.operators.produce_to_topic import ProduceToTopicOperator
+from airflow_provider_openmldb.operators.await_message import AwaitKafkaMessageOperator
+from airflow_provider_openmldb.operators.consume_from_topic import ConsumeFromTopicOperator
+from airflow_provider_openmldb.operators.produce_to_topic import ProduceToTopicOperator
 
 default_args = {
     "owner": "airflow",
@@ -22,14 +21,14 @@ default_args = {
 }
 
 
-
 def producer_function():
     for i in range(20):
-        yield (json.dumps(i), json.dumps(i + 1))
-
+        yield json.dumps(i), json.dumps(i + 1)
 
 
 consumer_logger = logging.getLogger("airflow")
+
+
 def consumer_function(message, prefix=None):
     key = json.loads(message.key())
     value = json.loads(message.value())
@@ -41,20 +40,21 @@ def await_function(message):
     if json.loads(message.value()) % 5 == 0:
         return f" Got the following message: {json.loads(message.value())}"
 
+
 def hello_kafka():
     print("Hello Kafka !")
     return
 
-with DAG(
-    "kafka-example",
-    default_args=default_args,
-    description="Examples of Kafka Operators",
-    schedule_interval=timedelta(days=1),
-    start_date=datetime(2021, 1, 1),
-    catchup=False,
-    tags=["example"],
-) as dag:
 
+with DAG(
+        "kafka-example",
+        default_args=default_args,
+        description="Examples of Kafka Operators",
+        schedule_interval=timedelta(days=1),
+        start_date=datetime(2021, 1, 1),
+        catchup=False,
+        tags=["example"],
+) as dag:
     t1 = ProduceToTopicOperator(
         task_id="produce_to_topic",
         topic="test_1",
@@ -62,7 +62,8 @@ with DAG(
         kafka_config={"bootstrap.servers": "broker:29092"},
     )
 
-    t1.doc_md = 'Takes a series of messages from a generator function and publishes them to the `test_1` topic of our kafka cluster.'
+    t1.doc_md = 'Takes a series of messages from a generator function and publishes them to the `test_1` topic of our ' \
+                'kafka cluster. '
 
     t2 = ConsumeFromTopicOperator(
         task_id="consume_from_topic",
@@ -80,7 +81,8 @@ with DAG(
         max_batch_size=2,
     )
 
-    t2.doc_md = 'Reads a series of messages from the `test_1` topic, and processes them with a consumer function with a keyword argument.'
+    t2.doc_md = 'Reads a series of messages from the `test_1` topic, and processes them with a consumer function with ' \
+                'a keyword argument. '
 
     t3 = ProduceToTopicOperator(
         task_id="produce_to_topic_2",
@@ -89,7 +91,8 @@ with DAG(
         kafka_config={"bootstrap.servers": "broker:29092"},
     )
 
-    t3.doc_md = 'Does the same thing as the t1 task, but passes the callable directly instead of using the string notation.'
+    t3.doc_md = 'Does the same thing as the t1 task, but passes the callable directly instead of using the string ' \
+                'notation. '
 
     t4 = ConsumeFromTopicOperator(
         task_id="consume_from_topic_2",
@@ -106,7 +109,8 @@ with DAG(
         max_batch_size=10,
     )
 
-    t4.doc_md = 'Does the same thing as the t2 task, but passes the callable directly instead of using the string notation.'
+    t4.doc_md = 'Does the same thing as the t2 task, but passes the callable directly instead of using the string ' \
+                'notation. '
 
     t5 = AwaitKafkaMessageOperator(
         task_id="awaiting_message",
@@ -129,5 +133,5 @@ with DAG(
     )
 
     t6.doc_md = 'The task that is executed after the deferable task returns for execution.'
-    
+
     t1 >> t2 >> t3 >> t4 >> t5 >> t6

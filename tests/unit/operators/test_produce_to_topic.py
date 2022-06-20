@@ -2,7 +2,7 @@ import logging
 import unittest
 from unittest import mock
 
-from airflow_provider_kafka.operators.produce_to_topic import ProduceToTopicOperator
+from airflow_provider_openmldb.operators.produce_to_topic import ProduceToTopicOperator
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class TestProduceToTopic(unittest.TestCase):
     def test_operator(self):
         operator = ProduceToTopicOperator(
             topic="test_1",
-            producer_function="airflow_provider_kafka.shared_utils.simple_producer",
+            producer_function="airflow_provider_openmldb.shared_utils.simple_producer",
             producer_function_args=(b"test", b"test"),
             task_id="test",
             kafka_config={"socket.timeout.ms": 10, "message.timeout.ms": 10, "bootstrap.servers": "test"},

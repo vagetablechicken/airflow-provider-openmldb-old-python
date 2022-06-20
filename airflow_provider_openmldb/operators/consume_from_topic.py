@@ -4,8 +4,8 @@ from typing import Any, Callable, Dict, Optional, Sequence, Union
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 
-from airflow_provider_kafka.hooks.consumer import KafkaConsumerHook
-from airflow_provider_kafka.shared_utils import get_callable
+from airflow_provider_openmldb.hooks.consumer import KafkaConsumerHook
+from airflow_provider_openmldb.shared_utils import get_callable
 
 VALID_COMMIT_CADENCE = {"never", "end_of_batch", "end_of_operator"}
 

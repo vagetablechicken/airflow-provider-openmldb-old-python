@@ -5,8 +5,8 @@ from typing import Any, Callable, Dict, Optional, Sequence, Union
 from airflow.exceptions import AirflowException
 from airflow.models import BaseOperator
 
-from airflow_provider_kafka.hooks.producer import KafkaProducerHook
-from airflow_provider_kafka.shared_utils import get_callable
+from airflow_provider_openmldb.hooks.producer import KafkaProducerHook
+from airflow_provider_openmldb.shared_utils import get_callable
 
 local_logger = logging.getLogger("airflow")
 

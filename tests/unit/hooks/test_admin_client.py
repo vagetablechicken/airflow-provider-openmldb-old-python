@@ -7,7 +7,7 @@ import pytest
 from airflow import AirflowException
 
 # Import Hook
-from airflow_provider_kafka.hooks.admin_client import KafkaAdminClientHook
+from airflow_provider_openmldb.hooks.admin_client import KafkaAdminClientHook
 
 log = logging.getLogger(__name__)
 
