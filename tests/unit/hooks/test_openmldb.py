@@ -90,7 +90,7 @@ class TestMySqlHookConn(unittest.TestCase):
         mock_connect.assert_called_once_with('db-override', 'foo', '/bar')
 
 
-class MockMySQLConnectorConnection:
+class MockOpenMLDBConnectorConnection:
     DEFAULT_AUTOCOMMIT = 'default'
 
     def __init__(self):
@@ -124,177 +124,106 @@ class TestOpenMLDBHook(unittest.TestCase):
 
     @parameterized.expand([(True,), (False,)])
     def test_set_autocommit_mysql_connector(self, autocommit):
-        conn = MockMySQLConnectorConnection()
-        self.db_hook.set_autocommit(conn, autocommit)
-        assert False
+        self.db_hook.set_autocommit(self.conn, autocommit)
+        assert self.db_hook.get_autocommit(self.conn) is False
+
+    def test_set_autocommit(self):
+        autocommit = False
+        self.db_hook.set_autocommit(self.conn, autocommit)
+        # supports_autocommit == False, won't set autocommit
+        self.conn.set_autocommit.assert_not_called()
+
+    def test_get_autocommit(self):
+        self.db_hook.get_autocommit(self.conn)
+        # supports_autocommit == False, won't get autocommit
+        self.conn.get_autocommit.assert_not_called()
+
+    @parameterized.expand([(True,), (False,)])
+    def test_run_with_set_autocommit(self, autocommit):
+        sql = 'SQL'
+        # self.conn.get_autocommit.return_value = False
+
+        # Default autocommit setting should be False.
+        # Testing default autocommit value as well as run() behavior.
+        self.db_hook.run(sql, autocommit=autocommit)
+        # supports_autocommit == False, won't set autocommit
+        self.conn.autocommit.assert_not_called()
+        self.cur.execute.assert_called_once_with(sql)
+        assert self.conn.commit.call_count == 1
+
+    def test_run_with_parameters(self):
+        sql = 'SQL'
+        parameters = ('param1', 'param2')
+        self.db_hook.run(sql, parameters=parameters)
+        self.cur.execute.assert_called_once_with(sql, parameters)
+
+    def test_run_multi_queries(self):
+        sql = ['SQL1', 'SQL2']
+        self.db_hook.run(sql)
+        for i, item in enumerate(self.cur.execute.call_args_list):
+            args, kwargs = item
+            assert len(args) == 1
+            assert args[0] == sql[i]
+            assert kwargs == {}
+        calls = [mock.call(sql[0]), mock.call(sql[1])]
+        self.cur.execute.assert_has_calls(calls, any_order=True)
+
+    def test_serialize_cell(self):
+        assert 'foo' == self.db_hook._serialize_cell('foo', None)
 
 
-#
-#     def test_get_autocommit_mysql_connector(self):
-#         conn = MockMySQLConnectorConnection()
-#         assert self.db_hook.get_autocommit(conn) == MockMySQLConnectorConnection.DEFAULT_AUTOCOMMIT
-#
-#     def test_set_autocommit_mysqldb(self):
-#         autocommit = False
-#         self.db_hook.set_autocommit(self.conn, autocommit)
-#         self.conn.autocommit.assert_called_once_with(autocommit)
-#
-#     def test_get_autocommit_mysqldb(self):
-#         self.db_hook.get_autocommit(self.conn)
-#         self.conn.get_autocommit.assert_called_once()
-#
-#     def test_run_without_autocommit(self):
-#         sql = 'SQL'
-#         self.conn.get_autocommit.return_value = False
-#
-#         # Default autocommit setting should be False.
-#         # Testing default autocommit value as well as run() behavior.
-#         self.db_hook.run(sql, autocommit=False)
-#         self.conn.autocommit.assert_called_once_with(False)
-#         self.cur.execute.assert_called_once_with(sql)
-#         assert self.conn.commit.call_count == 1
-#
-#     def test_run_with_autocommit(self):
-#         sql = 'SQL'
-#         self.db_hook.run(sql, autocommit=True)
-#         self.conn.autocommit.assert_called_once_with(True)
-#         self.cur.execute.assert_called_once_with(sql)
-#         self.conn.commit.assert_not_called()
-#
-#     def test_run_with_parameters(self):
-#         sql = 'SQL'
-#         parameters = ('param1', 'param2')
-#         self.db_hook.run(sql, autocommit=True, parameters=parameters)
-#         self.conn.autocommit.assert_called_once_with(True)
-#         self.cur.execute.assert_called_once_with(sql, parameters)
-#         self.conn.commit.assert_not_called()
-#
-#     def test_run_multi_queries(self):
-#         sql = ['SQL1', 'SQL2']
-#         self.db_hook.run(sql, autocommit=True)
-#         self.conn.autocommit.assert_called_once_with(True)
-#         for i, item in enumerate(self.cur.execute.call_args_list):
-#             args, kwargs = item
-#             assert len(args) == 1
-#             assert args[0] == sql[i]
-#             assert kwargs == {}
-#         calls = [mock.call(sql[0]), mock.call(sql[1])]
-#         self.cur.execute.assert_has_calls(calls, any_order=True)
-#         self.conn.commit.assert_not_called()
-#
-#     def test_bulk_load(self):
-#         self.db_hook.bulk_load('table', '/tmp/file')
-#         self.cur.execute.assert_called_once_with(
-#             """
-#             LOAD DATA LOCAL INFILE '/tmp/file'
-#             INTO TABLE table
-#             """
-#         )
-#
-#     def test_bulk_dump(self):
-#         self.db_hook.bulk_dump('table', '/tmp/file')
-#         self.cur.execute.assert_called_once_with(
-#             """
-#             SELECT * INTO OUTFILE '/tmp/file'
-#             FROM table
-#             """
-#         )
-#
-#     def test_serialize_cell(self):
-#         assert 'foo' == self.db_hook._serialize_cell('foo', None)
-#
-#     def test_bulk_load_custom(self):
-#         self.db_hook.bulk_load_custom(
-#             'table',
-#             '/tmp/file',
-#             'IGNORE',
-#             """FIELDS TERMINATED BY ';'
-#             OPTIONALLY ENCLOSED BY '"'
-#             IGNORE 1 LINES""",
-#         )
-#         self.cur.execute.assert_called_once_with(
-#             """
-#             LOAD DATA LOCAL INFILE '/tmp/file'
-#             IGNORE
-#             INTO TABLE table
-#             FIELDS TERMINATED BY ';'
-#             OPTIONALLY ENCLOSED BY '"'
-#             IGNORE 1 LINES
-#             """
-#         )
+DEFAULT_DATE = timezone.datetime(2015, 1, 1)
+DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
+DEFAULT_DATE_DS = DEFAULT_DATE_ISO[:10]
+TEST_DAG_ID = 'unit_test_dag'
 
 
-# DEFAULT_DATE = timezone.datetime(2015, 1, 1)
-# DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
-# DEFAULT_DATE_DS = DEFAULT_DATE_ISO[:10]
-# TEST_DAG_ID = 'unit_test_dag'
-#
-#
-# class MySqlContext:
-#     def __init__(self, client):
-#         self.client = client
-#         self.connection = MySqlHook.get_connection(MySqlHook.default_conn_name)
-#         self.init_client = self.connection.extra_dejson.get('client', 'mysqlclient')
-#
-#     def __enter__(self):
-#         self.connection.set_extra(f'{{"client": "{self.client}"}}')
-#
-#     def __exit__(self, exc_type, exc_val, exc_tb):
-#         self.connection.set_extra(f'{{"client": "{self.init_client}"}}')
-#
-#
-# @pytest.mark.backend("mysql")
-# class TestMySql(unittest.TestCase):
-#     def setUp(self):
-#         args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
-#         dag = DAG(TEST_DAG_ID, default_args=args)
-#         self.dag = dag
-#
-#     def tearDown(self):
-#         drop_tables = {'test_mysql_to_mysql', 'test_airflow'}
-#         with closing(MySqlHook().get_conn()) as conn:
-#             with closing(conn.cursor()) as cursor:
-#                 for table in drop_tables:
-#                     cursor.execute(f"DROP TABLE IF EXISTS {table}")
-#
-#     @parameterized.expand(
-#         [
-#             ("mysqlclient",),
-#             ("mysql-connector-python",),
-#         ]
-#     )
-#     @mock.patch.dict(
-#         'os.environ',
-#         {
-#             'AIRFLOW_CONN_AIRFLOW_DB': 'mysql://root@mysql/airflow?charset=utf8mb4&local_infile=1',
-#         },
-#     )
-#     def test_mysql_hook_test_bulk_load(self, client):
-#         with MySqlContext(client):
-#             records = ("foo", "bar", "baz")
-#
-#             import tempfile
-#
-#             with tempfile.NamedTemporaryFile() as f:
-#                 f.write("\n".join(records).encode('utf8'))
-#                 f.flush()
-#
-#                 hook = MySqlHook('airflow_db')
-#                 with closing(hook.get_conn()) as conn:
-#                     with closing(conn.cursor()) as cursor:
-#                         cursor.execute(
-#                             """
-#                             CREATE TABLE IF NOT EXISTS test_airflow (
-#                                 dummy VARCHAR(50)
-#                             )
-#                         """
-#                         )
-#                         cursor.execute("TRUNCATE TABLE test_airflow")
-#                         hook.bulk_load("test_airflow", f.name)
-#                         cursor.execute("SELECT dummy FROM test_airflow")
-#                         results = tuple(result[0] for result in cursor.fetchall())
-#                         assert sorted(results) == sorted(records)
-#
+@pytest.mark.backend("mysql")
+class TestMySql(unittest.TestCase):
+    def setUp(self):
+        args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
+        dag = DAG(TEST_DAG_ID, default_args=args)
+        self.dag = dag
+
+    def tearDown(self):
+        drop_tables = {'test_airflow'}
+        with closing(OpenMLDBHook().get_conn()) as conn:
+            with closing(conn.cursor()) as cursor:
+                for table in drop_tables:
+                    cursor.execute(f"DROP TABLE IF EXISTS {table}")
+
+    @mock.patch.dict(
+        'os.environ',
+        {
+            'AIRFLOW_CONN_AIRFLOW_DB': 'mysql://root@mysql/airflow?charset=utf8mb4&local_infile=1',
+        },
+    )
+    def test_mysql_hook_test_bulk_load(self):
+        records = ("foo", "bar", "baz")
+
+        import tempfile
+
+        with tempfile.NamedTemporaryFile() as f:
+            f.write("\n".join(records).encode('utf8'))
+            f.flush()
+
+            hook = OpenMLDBHook('airflow_db')
+            with closing(hook.get_conn()) as conn:
+                with closing(conn.cursor()) as cursor:
+                    cursor.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS test_airflow (
+                            dummy VARCHAR(50)
+                        )
+                    """
+                    )
+                    cursor.execute("TRUNCATE TABLE test_airflow") # TODO(hw): unsupported
+                    # hook.bulk_load("test_airflow", f.name) # TODO(hw): load infile?
+                    cursor.execute("SELECT dummy FROM test_airflow")
+                    results = tuple(result[0] for result in cursor.fetchall())
+                    assert sorted(results) == sorted(records)
+
+
 #     @parameterized.expand(
 #         [
 #             ("mysqlclient",),

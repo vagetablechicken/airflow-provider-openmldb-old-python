@@ -39,7 +39,7 @@ class OpenMLDBHook(DbApiHook):
     """
 
     conn_name_attr = 'mysql_conn_id'
-    default_conn_name = 'mysql_default'
+    default_conn_name = 'openmldb_default'
     conn_type = 'openmldb'
     hook_name = 'OpenMLDB'
     supports_autocommit = False
@@ -48,28 +48,6 @@ class OpenMLDBHook(DbApiHook):
         super().__init__(*args, **kwargs)
         self.schema = kwargs.pop("schema", None)
         self.connection = kwargs.pop("connection", None)
-
-    def set_autocommit(self, conn: dbapi.Connection, autocommit: bool) -> None:
-        """
-        The MySQLdb (mysqlclient) client uses an `autocommit` method rather
-        than an `autocommit` property to set the autocommit setting
-
-        :param conn: connection to set autocommit setting
-        :param autocommit: autocommit setting
-        :rtype: None
-        """
-        conn.autocommit = autocommit
-
-    def get_autocommit(self, conn: dbapi.Connection) -> bool:
-        """
-        The MySQLdb (mysqlclient) client uses a `get_autocommit` method
-        rather than an `autocommit` property to get the autocommit setting
-
-        :param conn: connection to get autocommit setting from.
-        :return: connection autocommit setting
-        :rtype: bool
-        """
-        return False
 
     def _parse_zk_options(self, zk) -> Dict:
         d = {}
@@ -133,7 +111,7 @@ class OpenMLDBHook(DbApiHook):
     @staticmethod
     def _serialize_cell(cell: object, conn: Optional[Connection] = None) -> object:
         """
-        The package MySQLdb converts an argument to a literal
+        The package OpenMLDB converts an argument to a literal
         when passing those separately to execute. Hence, this method does nothing.
 
         :param cell: The cell to insert into the table
