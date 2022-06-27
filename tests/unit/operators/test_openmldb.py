@@ -15,102 +15,119 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+
+
+# fmt: off
+# pylint: disable=unused-import
 import os
-import unittest
-from contextlib import closing
-from tempfile import NamedTemporaryFile
+import sys
+from pathlib import Path
 
-import pytest
-from parameterized import parameterized
+from openmldb.dbapi import DatabaseError
 
-from airflow.models.dag import DAG
+sys.path.append(Path(__file__).parent.parent.parent.parent.as_posix())
+
+import openmldb
+
 from airflow_provider_openmldb.hooks.openmldb import OpenMLDBHook
 from airflow_provider_openmldb.operators.openmldb import OpenMLDBOperator
+
+from airflow.models.dag import DAG
 from airflow.utils import timezone
 
+import unittest
+from unittest import mock
 
-DEFAULT_DATE = timezone.datetime(2022, 6, 18)
+# fmt: on
+
+DEFAULT_DATE = timezone.datetime(2015, 1, 1)
 DEFAULT_DATE_ISO = DEFAULT_DATE.isoformat()
 DEFAULT_DATE_DS = DEFAULT_DATE_ISO[:10]
 TEST_DAG_ID = 'unit_test_dag'
 
 
-@pytest.mark.backend("openmldb")
-class TestMySql(unittest.TestCase):
+@mock.patch.dict('os.environ', AIRFLOW_CONN_OPENMLDB_DEFAULT='openmldb:///test_db?zk=127.0.0.1:2181&zkPath=/openmldb'
+                                                             '&zkSessionTimeout=60000')
+class TestOpenMLDB(unittest.TestCase):
+    # setup needs patch first
+    @mock.patch.dict('os.environ', AIRFLOW_CONN_OPENMLDB_DEFAULT='openmldb:///?zk=127.0.0.1:2181&zkPath=/openmldb'
+                                                                 '&zkSessionTimeout=60000')
     def setUp(self):
         args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
         dag = DAG(TEST_DAG_ID, default_args=args)
         self.dag = dag
+        # create database first
+        print(f'setup {os.environ.get("AIRFLOW_CONN_OPENMLDB_DEFAULT")}')
+        OpenMLDBHook().run('CREATE DATABASE IF NOT EXISTS test_db')
 
     def tearDown(self):
         drop_tables = {'test_airflow'}
-        with closing(OpenMLDBHook().get_conn()) as conn:
-            with closing(conn.cursor()) as cursor:
-                for table in drop_tables:
-                    cursor.execute(f"DROP TABLE IF EXISTS {table}")
+        # with closing(OpenMLDBHook().get_conn()) as conn:
+        #     with closing(conn.cursor()) as cursor:
+        #         for table in drop_tables:
+        #             cursor.execute(f"DROP TABLE IF EXISTS {table}")
 
-    def test_mysql_operator_test(self):
-        with (client):
-            sql = """
-            CREATE TABLE IF NOT EXISTS test_airflow (
-                dummy VARCHAR(50)
-            );
-            """
-            op = OpenMLDBOperator(task_id='basic_mysql', sql=sql, dag=self.dag)
-            op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, ignore_ti_state=True)
+    def test_openmldb_operator_test(self):
+        print(f'test hw {os.environ.get("AIRFLOW_CONN_OPENMLDB_DB")}')
+        sql = """
+        CREATE TABLE IF NOT EXISTS test_airflow (
+            dummy VARCHAR(50)
+        );
+        """
+        op = OpenMLDBOperator(task_id='basic_openmldb', openmldb_conn_id='openmldb_default', sql=sql, dag=self.dag)
+        # dag test needs airflow server, do not do Operator.run
+        # op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, ignore_ti_state=True)
+        op.execute(context={})
 
+    @unittest.skip
     def test_mysql_operator_test_multi(self):
-        with MySqlContext(client):
-            sql = [
-                "CREATE TABLE IF NOT EXISTS test_airflow (dummy VARCHAR(50))",
-                "TRUNCATE TABLE test_airflow",
-                "INSERT INTO test_airflow VALUES ('X')",
-            ]
-            op = OpenMLDBOperator(
-                task_id='mysql_operator_test_multi',
-                sql=sql,
-                dag=self.dag,
-            )
-            op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, ignore_ti_state=True)
-
-    @parameterized.expand(
-        [
-            ("mysqlclient",),
-            ("mysql-connector-python",),
+        """multi sql is unsupported now"""
+        sql = [
+            "CREATE TABLE IF NOT EXISTS test_airflow (dummy VARCHAR(50))",
+            # "TRUNCATE TABLE test_airflow", # unsupported
+            "INSERT INTO test_airflow VALUES ('X')",
         ]
-    )
-    def test_overwrite_schema(self, client):
+        op = OpenMLDBOperator(
+            task_id='mysql_operator_test_multi',
+            # openmldb_conn_id='openmldb_default',
+            sql=sql,
+            dag=self.dag,
+        )
+        op.execute(context={})
+
+    def test_overwrite_schema(self):
+        """
+        Verifies option to overwrite connection schema
+        SELECT 1; is ok even the database is not exists
+        """
+        sql = "SELECT 1;"
+        op = OpenMLDBOperator(
+            task_id='test_mysql_operator_test_schema_overwrite',
+            sql=sql,
+            dag=self.dag,
+            database="foobar",
+        )
+        op.execute(context={})
+
+    def test_overwrite_schema_1(self):
         """
         Verifies option to overwrite connection schema
         """
-        with MySqlContext(client):
-            sql = "SELECT 1;"
-            op = MySqlOperator(
-                task_id='test_mysql_operator_test_schema_overwrite',
-                sql=sql,
-                dag=self.dag,
-                database="foobar",
-            )
+        sql = "SELECT * FROM test_airflow;"
+        op = OpenMLDBOperator(
+            task_id='test_mysql_operator_test_schema_overwrite',
+            sql=sql,
+            dag=self.dag,
+            database="foobar",
+        )
 
-            from MySQLdb import OperationalError
+        try:
+            op.execute(context={})
+        except DatabaseError as e:
+            assert "table test_airflow not exists in database [foobar]" in str(e)
 
-            try:
-                op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, ignore_ti_state=True)
-            except OperationalError as e:
-                assert "Unknown database 'foobar'" in str(e)
+    # TODO(hw): check sql with parameters
 
-    def test_mysql_operator_resolve_parameters_template_json_file(self):
 
-        with NamedTemporaryFile(suffix='.json') as f:
-            f.write(b"{\n \"foo\": \"{{ ds }}\"}")
-            f.flush()
-            template_dir = os.path.dirname(f.name)
-            template_file = os.path.basename(f.name)
-
-            with DAG("test-dag", start_date=DEFAULT_DATE, template_searchpath=template_dir):
-                task = MySqlOperator(task_id="op1", parameters=template_file, sql="SELECT 1")
-
-            task.resolve_template_files()
-
-        assert isinstance(task.parameters, dict)
-        assert task.parameters["foo"] == "{{ ds }}"
+if __name__ == "__main__":
+    sys.exit(unittest.main())

@@ -16,30 +16,26 @@
 # specific language governing permissions and limitations
 # under the License.
 #
+# fmt: off
 import sys
 from pathlib import Path
 
 # add parent directory
 sys.path.append(Path(__file__).parent.parent.parent.parent.as_posix())
-print(sys.path)
-import openmldb
+
+from airflow_provider_openmldb.hooks.openmldb import OpenMLDBHook
+
+from airflow.models import Connection
+from airflow.models.dag import DAG
+from airflow.utils import timezone
+# fmt: on
 
 from parameterized import parameterized
 
 import json
-import os
 import unittest
-import uuid
 from contextlib import closing
 from unittest import mock
-
-import pytest
-# from parameterized import parameterized
-
-from airflow.models import Connection
-from airflow.models.dag import DAG
-from airflow_provider_openmldb.hooks.openmldb import OpenMLDBHook
-from airflow.utils import timezone
 
 
 class TestMySqlHookConn(unittest.TestCase):
@@ -59,7 +55,7 @@ class TestMySqlHookConn(unittest.TestCase):
         self.db_hook.get_connection = mock.Mock()
         self.db_hook.get_connection.return_value = self.connection
 
-    @mock.patch('openmldb.dbapi.dbapi.connect')
+    @mock.patch('openmldb.dbapi.connect')
     def test_get_conn(self, mock_connect):
         self.db_hook.get_conn()
         assert mock_connect.call_count == 1
@@ -67,7 +63,7 @@ class TestMySqlHookConn(unittest.TestCase):
         assert args == ('fake', 'foo', '/bar')
         assert kwargs == {}
 
-    @mock.patch('openmldb.dbapi.dbapi.connect')
+    @mock.patch('openmldb.dbapi.connect')
     def test_get_uri(self, mock_connect):
         # TODO(hw): zkSessionTimeout is not supported now
         self.connection.extra = json.dumps({'zk': 'a', 'zkPath': 'b', 'zkSessionTimeout': '12345'})
@@ -77,32 +73,17 @@ class TestMySqlHookConn(unittest.TestCase):
         print(self.db_hook.get_uri())
         assert self.db_hook.get_uri() == "openmldb:///fake?zk=a&zkPath=b&zkSessionTimeout=12345"
 
-    @mock.patch('openmldb.dbapi.dbapi.connect')
+    @mock.patch('openmldb.dbapi.connect')
     def test_get_conn_from_connection(self, mock_connect):
         hook = OpenMLDBHook(connection=self.connection)
         hook.get_conn()
         mock_connect.assert_called_once_with('fake', 'foo', '/bar')
 
-    @mock.patch('openmldb.dbapi.dbapi.connect')
+    @mock.patch('openmldb.dbapi.connect')
     def test_get_conn_from_connection_with_schema_override(self, mock_connect):
         hook = OpenMLDBHook(connection=self.connection, schema='db-override')
         hook.get_conn()
         mock_connect.assert_called_once_with('db-override', 'foo', '/bar')
-
-
-class MockOpenMLDBConnectorConnection:
-    DEFAULT_AUTOCOMMIT = 'default'
-
-    def __init__(self):
-        self._autocommit = self.DEFAULT_AUTOCOMMIT
-
-    @property
-    def autocommit(self):
-        return self._autocommit
-
-    @autocommit.setter
-    def autocommit(self, autocommit):
-        self._autocommit = autocommit
 
 
 class TestOpenMLDBHook(unittest.TestCase):
@@ -178,26 +159,29 @@ DEFAULT_DATE_DS = DEFAULT_DATE_ISO[:10]
 TEST_DAG_ID = 'unit_test_dag'
 
 
-@pytest.mark.backend("mysql")
-class TestMySql(unittest.TestCase):
+# Mock the Airflow connection
+# airflow has default connections, ref create_default_connections. OpenMLDB connection should be manually created.
+@mock.patch.dict('os.environ',
+                 AIRFLOW_CONN_OPENMLDB_DB='openmldb:///fake?zk=127.0.0.1:2181&zkPath=/openmldb&zkSessionTimeout=60000')
+class TestOpenMLDB(unittest.TestCase):
     def setUp(self):
         args = {'owner': 'airflow', 'start_date': DEFAULT_DATE}
         dag = DAG(TEST_DAG_ID, default_args=args)
         self.dag = dag
 
     def tearDown(self):
-        drop_tables = {'test_airflow'}
-        with closing(OpenMLDBHook().get_conn()) as conn:
-            with closing(conn.cursor()) as cursor:
-                for table in drop_tables:
-                    cursor.execute(f"DROP TABLE IF EXISTS {table}")
+        pass
+        # drop_tables = {'test_airflow'}
+        # with closing(OpenMLDBHook('airflow_db').get_conn()) as conn:
+        #     with closing(conn.cursor()) as cursor:
+        #         for table in drop_tables:
+        #             cursor.execute(f"DROP TABLE IF EXISTS {table}")
 
-    @mock.patch.dict(
-        'os.environ',
-        {
-            'AIRFLOW_CONN_AIRFLOW_DB': 'mysql://root@mysql/airflow?charset=utf8mb4&local_infile=1',
-        },
-    )
+    def test_smoke(self):
+        hook = OpenMLDBHook('openmldb_db')
+        hook.get_conn()
+
+    @unittest.skip
     def test_mysql_hook_test_bulk_load(self):
         records = ("foo", "bar", "baz")
 
@@ -206,7 +190,7 @@ class TestMySql(unittest.TestCase):
         with tempfile.NamedTemporaryFile() as f:
             f.write("\n".join(records).encode('utf8'))
             f.flush()
-
+            # TODO(hw): conn_name_attr just a string, how to connect the right database system?
             hook = OpenMLDBHook('airflow_db')
             with closing(hook.get_conn()) as conn:
                 with closing(conn.cursor()) as cursor:
@@ -217,60 +201,17 @@ class TestMySql(unittest.TestCase):
                         )
                     """
                     )
-                    cursor.execute("TRUNCATE TABLE test_airflow") # TODO(hw): unsupported
+                    cursor.execute("TRUNCATE TABLE test_airflow")  # TODO(hw): unsupported
                     # hook.bulk_load("test_airflow", f.name) # TODO(hw): load infile?
                     cursor.execute("SELECT dummy FROM test_airflow")
-                    results = tuple(result[0] for result in cursor.fetchall())
-                    assert sorted(results) == sorted(records)
+                    # results = tuple(result[0] for result in cursor.fetchall())
+                    # assert sorted(results) == sorted(records)
 
+    @unittest.skip
+    def test_mysql_hook_test_bulk_dump(self):
+        hook = OpenMLDBHook('airflow_db')
+        # hook.bulk_dump("INFORMATION_SCHEMA.TABLES", f"TABLES_{client}_{uuid.uuid1()}") # TODO(hw): select into
 
-#     @parameterized.expand(
-#         [
-#             ("mysqlclient",),
-#             ("mysql-connector-python",),
-#         ]
-#     )
-#     def test_mysql_hook_test_bulk_dump(self, client):
-#         with MySqlContext(client):
-#             hook = MySqlHook('airflow_db')
-#             priv = hook.get_first("SELECT @@global.secure_file_priv")
-#             # Use random names to allow re-running
-#             if priv and priv[0]:
-#                 # Confirm that no error occurs
-#                 hook.bulk_dump(
-#                     "INFORMATION_SCHEMA.TABLES",
-#                     os.path.join(priv[0], f"TABLES_{client}-{uuid.uuid1()}"),
-#                 )
-#             elif priv == ("",):
-#                 hook.bulk_dump("INFORMATION_SCHEMA.TABLES", f"TABLES_{client}_{uuid.uuid1()}")
-#             else:
-#                 raise pytest.skip("Skip test_mysql_hook_test_bulk_load since file output is not permitted")
-#
-#     @parameterized.expand(
-#         [
-#             ("mysqlclient",),
-#             ("mysql-connector-python",),
-#         ]
-#     )
-#     @mock.patch('airflow.providers.mysql.hooks.mysql.MySqlHook.get_conn')
-#     def test_mysql_hook_test_bulk_dump_mock(self, client, mock_get_conn):
-#         with MySqlContext(client):
-#             mock_execute = mock.MagicMock()
-#             mock_get_conn.return_value.cursor.return_value.execute = mock_execute
-#
-#             hook = MySqlHook('airflow_db')
-#             table = "INFORMATION_SCHEMA.TABLES"
-#             tmp_file = "/path/to/output/file"
-#             hook.bulk_dump(table, tmp_file)
-#
-#             from tests.test_utils.asserts import assert_equal_ignore_multiple_spaces
-#
-#             assert mock_execute.call_count == 1
-#             query = f"""
-#                 SELECT * INTO OUTFILE '{tmp_file}'
-#                 FROM {table}
-#             """
-#             assert_equal_ignore_multiple_spaces(self, mock_execute.call_args[0][0], query)
 
 if __name__ == "__main__":
     sys.exit(unittest.main())

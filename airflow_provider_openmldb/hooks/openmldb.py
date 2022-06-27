@@ -17,13 +17,15 @@
 # under the License.
 
 """This module allows to connect to a MySQL database."""
-import openmldb
-import openmldb.dbapi.dbapi as dbapi
 import json
-from typing import Dict, Optional, Tuple
-
+from typing import Dict, Optional
+# fmt: off
+import openmldb.dbapi as dbapi
 from airflow.hooks.dbapi import DbApiHook
 from airflow.models import Connection
+
+
+# fmt: on
 
 
 class OpenMLDBHook(DbApiHook):
@@ -38,7 +40,7 @@ class OpenMLDBHook(DbApiHook):
     :param connection: The :ref:`MySQL connection id <howto/connection:mysql>` used for MySQL credentials.
     """
 
-    conn_name_attr = 'mysql_conn_id'
+    conn_name_attr = 'openmldb_conn_id'
     default_conn_name = 'openmldb_default'
     conn_type = 'openmldb'
     hook_name = 'OpenMLDB'
@@ -49,7 +51,8 @@ class OpenMLDBHook(DbApiHook):
         self.schema = kwargs.pop("schema", None)
         self.connection = kwargs.pop("connection", None)
 
-    def _parse_zk_options(self, zk) -> Dict:
+    @staticmethod
+    def _parse_zk_options(zk) -> Dict:
         d = {}
         if zk.startswith('{'):
             # json style
@@ -82,15 +85,13 @@ class OpenMLDBHook(DbApiHook):
         # TODO(hw): standalone?
         return dbapi.connect(conn_config['db'], conn_config['zk'], conn_config['zkPath'])
 
-        raise ValueError('Unknown OpenMLDB client name provided!')
-
     def bulk_load(self, table: str, tmp_file: str) -> None:
         """Loads a tab-delimited file into a database table"""
         conn = self.get_conn()
         cur = conn.cursor()
         cur.execute(
             f"""
-            LOAD DATA LOCAL INFILE '{tmp_file}'
+            LOAD DATA INFILE '{tmp_file}'
             INTO TABLE {table}
             """
         )
@@ -102,8 +103,8 @@ class OpenMLDBHook(DbApiHook):
         cur = conn.cursor()
         cur.execute(
             f"""
-            SELECT * INTO OUTFILE '{tmp_file}'
-            FROM {table}
+            SELECT * FROM {table}
+            INTO OUTFILE '{tmp_file}'
             """
         )
         conn.commit()
@@ -120,40 +121,3 @@ class OpenMLDBHook(DbApiHook):
         :rtype: object
         """
         return cell
-
-    def bulk_load_custom(
-            self, table: str, tmp_file: str, duplicate_key_handling: str = 'IGNORE', extra_options: str = ''
-    ) -> None:
-        """
-        A more configurable way to load local data from a file into the database.
-
-        .. warning:: According to the mysql docs using this function is a
-            `security risk <https://dev.mysql.com/doc/refman/8.0/en/load-data-local.html>`_.
-            If you want to use it anyway you can do so by setting a client-side + server-side option.
-            This depends on the mysql client library used.
-
-        :param table: The table were the file will be loaded into.
-        :param tmp_file: The file (name) that contains the data.
-        :param duplicate_key_handling: Specify what should happen to duplicate data.
-            You can choose either `IGNORE` or `REPLACE`.
-
-            .. seealso::
-                https://dev.mysql.com/doc/refman/8.0/en/load-data.html#load-data-duplicate-key-handling
-        :param extra_options: More sql options to specify exactly how to load the data.
-
-            .. seealso:: https://dev.mysql.com/doc/refman/8.0/en/load-data.html
-        """
-        conn = self.get_conn()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            f"""
-            LOAD DATA LOCAL INFILE '{tmp_file}'
-            {duplicate_key_handling}
-            INTO TABLE {table}
-            {extra_options}
-            """
-        )
-
-        cursor.close()
-        conn.commit()

@@ -34,7 +34,7 @@ class OpenMLDBOperator(BaseOperator):
         sql statement, a list of str (sql statements), or reference to a template file.
         Template reference are recognized by str ending in '.sql'
         (templated)
-    :param mysql_conn_id: Reference to :ref:`mysql connection id <howto/connection:mysql>`.
+    :param openmldb_conn_id: Reference to :ref:`mysql connection id <howto/connection:mysql>`.
     :param parameters: (optional) the parameters to render the SQL query with.
         Template reference are recognized by str ending in '.json'
         (templated)
@@ -56,16 +56,14 @@ class OpenMLDBOperator(BaseOperator):
         self,
         *,
         sql: Union[str, List[str]],
-        mysql_conn_id: str = 'mysql_default',
+        openmldb_conn_id: str = 'openmldb_default',  # TODO(hw): default?
         parameters: Optional[Union[Mapping, Iterable]] = None,
-        autocommit: bool = False,
         database: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self.mysql_conn_id = mysql_conn_id
+        self.openmldb_conn_id = openmldb_conn_id
         self.sql = sql
-        self.autocommit = autocommit
         self.parameters = parameters
         self.database = database
 
@@ -76,5 +74,5 @@ class OpenMLDBOperator(BaseOperator):
 
     def execute(self, context: 'Context') -> None:
         self.log.info('Executing: %s', self.sql)
-        hook = MySqlHook(mysql_conn_id=self.mysql_conn_id, schema=self.database)
-        hook.run(self.sql, autocommit=self.autocommit, parameters=self.parameters)
+        hook = OpenMLDBHook(openmldb_conn_id=self.openmldb_conn_id, schema=self.database)
+        hook.run(self.sql, parameters=self.parameters)
